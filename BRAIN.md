@@ -20,11 +20,22 @@ never by silently deviating.
 
 1. **Read before you produce.** Every session begins by reading
    `~/wiki/_system/index.md`. No exceptions.
-2. **Skills never write wiki pages directly.** Exactly two sanctioned writers
-   exist: the **updater** (applies deposit intents) and the **dreamer**
-   (scheduled structural consolidation only). Everything else emits deposit
-   intents to `~/wiki/_system/pending-deposits/`. All writers must hold the
-   vault lock (`_system/.write-lock`) — one writer at a time, no exceptions.
+2. **Skills never write wiki pages directly.** Exactly two sanctioned writers of
+   *schema'd pages* exist: the **updater** (applies deposit intents) and the
+   **dreamer** (scheduled structural consolidation only). Everything else emits
+   deposit intents to `_system/pending-deposits/`. Both page writers must hold the
+   vault lock (`_system/.write-lock`) — one at a time, no exceptions.
+
+   Every other process that commits to the vault repo is a **declared non-page
+   writer**: it touches no file under the page directories, and it is listed in
+   `<vault>/_system/writers.yaml` with its prefix, its owning script or cron, and
+   the paths it may touch. A backup mechanism may commit anything already on disk
+   but may never be the first thing that created a page. **A commit carrying
+   neither a §8 prefix nor a declared prefix is a violation, and a commit with no
+   prefix at all is a violation regardless of the registry** — the registry
+   legalises prefixes, not their absence. Asserted by
+   `scripts/check_writers.py`, which judges only commits after the registry's
+   declared cutover, because §8 forbids rewriting the history before it.
 3. **`raw/` is immutable.** Read freely. Never edit, rename, or delete anything
    under `~/wiki/raw/`. New captures are new files.
 4. **Every write is a git commit.** No uncommitted vault mutations.
@@ -61,8 +72,14 @@ never by silently deviating.
 │   ├── log.md                    # append-only narrative of every change
 │   ├── taxonomy.md               # controlled tag vocabulary
 │   ├── pending-deposits/         # deposit intent queue (YAML files)
+│   │   └── rejected/             # intents the updater refused (§11a)
 │   ├── lint-reports/             # weekly lint output
-│   └── task-registry.yaml        # SSOT task tracking
+│   ├── task-registry.yaml        # SSOT task tracking
+│   ├── writers.yaml              # declared non-page writers (§0.2)
+│   └── …                         # further agent working directories. A vault's
+│                                 # FULL _system inventory lives in that vault's
+│                                 # own _system/README.md, never in this file:
+│                                 # engine files carry no vault content (§12, E1).
 └── references/                   # human-curated reference material
 ```
 

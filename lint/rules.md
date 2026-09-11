@@ -6,9 +6,13 @@ schedule: "Weekly cron. Report to ~/wiki/_system/lint-reports/YYYY-MM-DD.md, com
 
 # Lint Rules
 
-Lint is the sole error-catching mechanism in a full-autonomy vault. High
-findings must produce action (deposit intents or task-registry entries), not
-just prose. Each report ends with a scorecard against the success metrics.
+Lint is the sole error-catching mechanism in a full-autonomy vault. Every HIGH
+finding, and every MED finding over its stated target for a second consecutive
+cycle, must produce action — a deposit intent or a task-registry entry — not just
+prose. **A finding carried as prose for three consecutive cycles is promoted to
+HIGH**: it means the report is being read and ignored. Rule 10 spent eight cycles
+over target with no action before this clause existed. Each report ends with a
+scorecard against the success metrics.
 
 | # | Rule | Severity | Check | Output |
 |---|------|----------|-------|--------|
@@ -21,7 +25,7 @@ just prose. Each report ends with a scorecard against the success metrics.
 | 7 | Rogue tags | MED | Tags not in taxonomy.md | Auto-fix intents (normalize) or taxonomy proposals |
 | 8 | Provenance gaps | MED | Synthesis-heavy pages (multi-source, long Body) with zero `^[inferred]` marks | Flag for updater re-audit |
 | 9 | Confidence audit | MED | Sample 5 `confidence: high` pages; re-derive claims from cited sources | Downgrade intents where claims don't trace |
-| 10 | Stale pages | LOW | Active entities/projects untouched 30d+ (target <10%) | Refresh candidates list |
+| 10 | Stale pages | MED | Per type, over pages in `core_dirs` that carry a parseable `updated:`. Targets: `project` <10%, `entity` <25%, `moc` <25%. `concept`, `source`, `decision` and `digest` are NOT graded — a source is a reading of a fixed artifact and a decision is an event. `references/` is not graded: §2 exempts it from the frontmatter mandate. The report MUST print the denominator, and MUST report graded pages with no parseable `updated:` as a separate finding rather than folding them into a pass. A single vault-wide staleness percentage is itself a rule-10 violation. | Per-type table; one task-registry entry per over-target type, and one for the undated set |
 | 11 | Data gaps | LOW | Questions the vault raises but can't answer; thin pages on active topics | Suggested web-search-and-ingest tasks |
 | 12 | Queue health | HIGH | Any pending-deposits/ file older than 24h; rejected/ growth | Alert + immediate updater run |
 | 13 | Overlay/dir consistency | MED | Page's `overlay:` field matches its directory (overlays/dev/ ⇒ dev, etc.); core types live outside overlays/ | Fix intents |
