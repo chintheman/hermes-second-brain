@@ -50,7 +50,7 @@ def load_registry(vault):
     if not prefixes:
         print(f"ERROR: registry declares no writers: {path}", file=sys.stderr)
         sys.exit(2)
-    return prefixes, data.get("cutover")
+    return prefixes, data.get("cutover"), data.get("cutover_commit")
 
 
 def git(vault, *args):
@@ -66,7 +66,7 @@ def main():
                     help="run against a date before the cutover; must report violations")
     args = ap.parse_args()
 
-    prefixes, cutover = load_registry(args.vault)
+    prefixes, cutover, registry_base = load_registry(args.vault)
     since = args.since or ("2026-07-13" if args.negative_control else cutover)
     if not since:
         print("ERROR: registry has no cutover and --since not given", file=sys.stderr)
@@ -79,13 +79,25 @@ def main():
     alts = []
     for name, delim in sorted(set(decl), key=lambda x: -len(x[0])):
         esc = re.escape(name)
-        alts.append(esc + r"(\([^)]*\))?: " if delim != "space" else esc + r" \S")
+        if delim == "space":
+            # A bare `prefix \S` match let any prose beginning with the prefix pass.
+            # A space-delimited writer emits a machine token, not English: require a
+            # token with no lowercase word characters followed by a space.
+            alts.append(esc + r" [0-9A-Za-z._:+-]+$")
+        else:
+            alts.append(esc + r"(\([^)]*\))?: ")
     pat = re.compile("^(" + "|".join(alts) + ")")
 
     # --since filters by author date, which a backdated commit at HEAD can use to
     # prune the entire range (observed: six post-cutover commits vanished, exit 2
     # "nothing proved"). Prefer a topological walk from the cutover commit.
-    base = git(args.vault, "rev-list", "-1", f"--before={since}", "HEAD").strip()
+    # A SHA pins the range to the DAG. --before is a date filter, and one
+    # `git commit --date=<pre-cutover>` at HEAD collapsed the whole range to empty,
+    # which the watchdog then read as "nothing to check".
+    # The negative control must look BEFORE the cutover, so it never uses the pin.
+    base = "" if args.negative_control else (registry_base or "").strip()
+    if not base:
+        base = git(args.vault, "rev-list", "-1", f"--before={since}", "HEAD").strip()
     if base:
         log = git(args.vault, "log", f"{base}..HEAD", "--pretty=format:%h %s")
     else:

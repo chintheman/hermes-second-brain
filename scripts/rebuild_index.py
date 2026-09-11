@@ -68,6 +68,24 @@ FM_RE = re.compile(r"\A---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 _NULLISH = {"", "null", "~", "none", "nil", "false", "0", "[]", "[ ]", "{}"}
 
 
+def _target_exists(vault, value):
+    """True when `superseded_by` names a page that is actually on disk."""
+    raw = str(value).split("#", 1)[0].strip().strip('"').strip("'")
+    name = raw.strip("[]").split("|", 1)[0].strip()
+    if not name:
+        return False
+    if name.endswith(".md") and os.path.exists(os.path.join(vault, name)):
+        return True
+    base = os.path.basename(name)
+    for d in SCAN_DIRS:
+        root = os.path.join(vault, d)
+        for sub, dirs, files in os.walk(root):
+            dirs[:] = [x for x in dirs if not x.startswith((".", "_"))]
+            if f"{base}.md" in files or base in files:
+                return True
+    return False
+
+
 def _is_superseded(value):
     v = str(value).split("#", 1)[0].strip().strip('"').strip("'").lower()
     return v not in _NULLISH
@@ -155,6 +173,7 @@ def collect(vault, skipped=None):
                 "updated": fm.get("updated", ""),
                 "confidence": fm.get("confidence", ""),
                 "superseded": _is_superseded(fm.get("superseded_by", "")),
+                "supersede_target_exists": _target_exists(vault, fm.get("superseded_by", "")),
                 "sources_n": (lambda s: 0 if not s else s.count(",") + 1)(fm.get("sources", "").strip()),
                 "summary": summary_line(text),
             })
@@ -223,9 +242,11 @@ def check_types(vault):
     skipped = []
     for p in collect(vault, skipped=skipped):
         # A superseded page is a redirect: it sits at its OLD path on purpose so
-        # inbound links still resolve (§5). Judging it against its folder would
-        # flag every retirement the schema itself prescribes.
-        if p["superseded"]:
+        # inbound links still resolve (§5). Judging it against its folder would flag
+        # every retirement the schema itself prescribes. But the exemption requires a
+        # REAL target — a redirect to a page that does not exist is not a redirect, it
+        # is an escape hatch, so those are gated like any other page.
+        if p["superseded"] and p.get("supersede_target_exists"):
             continue
         allowed = FOLDER_TYPES.get(p["dir"])
         if allowed is not None and p["type"] not in allowed:
