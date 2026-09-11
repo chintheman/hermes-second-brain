@@ -263,7 +263,7 @@ apply schema; resolve or flag contradictions; commit per batch; append log;
 run `scripts/rebuild_index.py`.
 
 ### Lint (weekly cron)
-Run `lint/rules.md` rules 1–12. Report to `_system/lint-reports/`, committed
+Run every rule in `lint/rules.md` (19 vault rules plus E1–E2 as of v1.3). Report to `_system/lint-reports/`, committed
 as `lint:`. High-severity findings become deposit intents or task-registry
 entries, not just prose.
 

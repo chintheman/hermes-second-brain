@@ -41,12 +41,21 @@ def load(vault):
     except Exception as exc:              # missing yaml, unreadable, malformed
         print(f"WARN: lint-config unreadable ({exc}); using schema defaults")
         return cfg
+    if not isinstance(loaded, dict):
+        print("WARN: lint-config is not a mapping; using schema defaults")
+        return cfg
     for key in ("core_dirs", "excluded_prefixes", "excluded_basenames"):
         if isinstance(loaded.get(key), list) and loaded[key]:
             cfg[key] = [str(v) for v in loaded[key]]
     if isinstance(loaded.get("r8r9"), dict):
-        cfg["r8r9"].update({k: v for k, v in loaded["r8r9"].items()
-                            if k in DEFAULT_R8R9})
+        # Validate the VALUE, not just the key: a string where an int belongs used
+        # to crash check_r8r9 at its first comparison.
+        for k, v in loaded["r8r9"].items():
+            if k in DEFAULT_R8R9 and isinstance(v, int) and not isinstance(v, bool):
+                cfg["r8r9"][k] = v
+            elif k in DEFAULT_R8R9:
+                print(f"WARN: lint-config r8r9.{k}={v!r} is not an integer; "
+                      f"using default {DEFAULT_R8R9[k]}")
     return cfg
 
 

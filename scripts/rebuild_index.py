@@ -28,7 +28,8 @@ SECTIONS = [
     ("digest", "Digests"),
 ]
 SCAN_DIRS = ["entities", "concepts", "mocs", "projects", "decisions",
-             "sources", "overlays/content", "overlays/dev", "overlays/personal"]
+             "sources",
+             "overlays/content", "overlays/dev", "overlays/personal"]
 RECENT_DAYS = 7
 
 # Digests are a cron-produced daily stream. Rendering all of them would roughly
@@ -57,6 +58,19 @@ FOLDER_TYPES = {
 }
 
 FM_RE = re.compile(r"\A---\s*\n(.*?)\n---\s*\n", re.DOTALL)
+
+
+
+# YAML spells null six ways and an empty list two more. Treating any of them as
+# "this page is superseded" both exempts it from --check-types and relocates a live
+# page into the Superseded section — the exact failure the gate exists to prevent,
+# reachable by one character. A page is superseded only when the field names a target.
+_NULLISH = {"", "null", "~", "none", "nil", "false", "0", "[]", "[ ]", "{}"}
+
+
+def _is_superseded(value):
+    v = str(value).split("#", 1)[0].strip().strip('"').strip("'").lower()
+    return v not in _NULLISH
 
 
 def parse_frontmatter(text, path="?"):
@@ -118,8 +132,14 @@ def collect(vault, skipped=None):
             found.extend(os.path.join(sub, f) for f in files if f.endswith(".md"))
         for path in sorted(found):
             fn = os.path.basename(path)
-            with open(path, encoding="utf-8") as f:
-                text = f.read()
+            try:
+                with open(path, encoding="utf-8") as f:
+                    text = f.read()
+            except (UnicodeDecodeError, OSError) as exc:
+                print(f"WARN: unreadable ({exc.__class__.__name__}): {path}", file=sys.stderr)
+                if skipped is not None:
+                    skipped.append(os.path.relpath(path, vault))
+                continue
             fm = parse_frontmatter(text, path)
             if not fm or "type" not in fm:
                 print(f"WARN: no/invalid frontmatter: {path}", file=sys.stderr)
@@ -134,7 +154,7 @@ def collect(vault, skipped=None):
                 "title": fm.get("title", fn[:-3]),
                 "updated": fm.get("updated", ""),
                 "confidence": fm.get("confidence", ""),
-                "superseded": fm.get("superseded_by", "null") not in ("null", "", "[]"),
+                "superseded": _is_superseded(fm.get("superseded_by", "")),
                 "sources_n": (lambda s: 0 if not s else s.count(",") + 1)(fm.get("sources", "").strip()),
                 "summary": summary_line(text),
             })

@@ -38,7 +38,18 @@ def load_registry(vault):
     except Exception as exc:
         print(f"ERROR: registry unreadable: {exc}", file=sys.stderr)
         sys.exit(2)
-    prefixes = [str(w["prefix"]) for w in data.get("writers", []) if w.get("prefix")]
+    if not isinstance(data, dict):
+        print(f"ERROR: registry is not a mapping: {path}", file=sys.stderr)
+        sys.exit(2)
+    writers = data.get("writers") or []
+    if not isinstance(writers, list):
+        print(f"ERROR: registry `writers` is not a list: {path}", file=sys.stderr)
+        sys.exit(2)
+    prefixes = [(str(w["prefix"]), str(w.get("delimiter", "colon")))
+                for w in writers if isinstance(w, dict) and w.get("prefix")]
+    if not prefixes:
+        print(f"ERROR: registry declares no writers: {path}", file=sys.stderr)
+        sys.exit(2)
     return prefixes, data.get("cutover")
 
 
@@ -61,10 +72,24 @@ def main():
         print("ERROR: registry has no cutover and --since not given", file=sys.stderr)
         sys.exit(2)
 
-    allowed = sorted(set(prefixes) | set(SANCTIONED), key=len, reverse=True)
-    pat = re.compile(r"^(" + "|".join(re.escape(p) for p in allowed) + r")[:( ]")
+    # A declared prefix matches only with its declared delimiter. Colon is the
+    # default; a bare space is opt-in, because matching any prefix followed by a
+    # space would let ordinary prose ("fix the index by hand") pass as declared.
+    decl = list(prefixes) + [(p, "colon") for p in SANCTIONED]
+    alts = []
+    for name, delim in sorted(set(decl), key=lambda x: -len(x[0])):
+        esc = re.escape(name)
+        alts.append(esc + r"(\([^)]*\))?: " if delim != "space" else esc + r" \S")
+    pat = re.compile("^(" + "|".join(alts) + ")")
 
-    log = git(args.vault, "log", f"--since={since}", "--pretty=format:%h %s")
+    # --since filters by author date, which a backdated commit at HEAD can use to
+    # prune the entire range (observed: six post-cutover commits vanished, exit 2
+    # "nothing proved"). Prefer a topological walk from the cutover commit.
+    base = git(args.vault, "rev-list", "-1", f"--before={since}", "HEAD").strip()
+    if base:
+        log = git(args.vault, "log", f"{base}..HEAD", "--pretty=format:%h %s")
+    else:
+        log = git(args.vault, "log", f"--since={since}", "--pretty=format:%h %s")
     lines = [l for l in log.splitlines() if l.strip()]
     if not lines:
         print(f"FAIL: no commits since {since} — nothing proved")

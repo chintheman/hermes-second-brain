@@ -118,6 +118,18 @@ def validate_intent(intent, idx=0):
             f"{where}: page {page!r} must be a vault-relative path"
         )
 
+    if action != "log_only":
+        if not page.endswith(".md"):
+            raise IntentValidationError(
+                f"{where}: page {page!r} must name a .md file"
+            )
+        tail = page.split("/", 1)[1] if "/" in page else ""
+        if not tail or tail.startswith((".", "_")) or "/_" in tail or "/." in tail:
+            raise IntentValidationError(
+                f"{where}: page {page!r} must be a real page path; dot- and "
+                "underscore-prefixed segments are not page directories"
+            )
+
     required_dir = ACTION_DIR.get(action)
     if required_dir and not page.startswith(required_dir):
         raise IntentValidationError(
