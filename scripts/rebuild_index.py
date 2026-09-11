@@ -95,21 +95,36 @@ def summary_line(text):
     return (s[:157] + "...") if len(s) > 160 else s
 
 
-def collect(vault):
+def collect(vault, skipped=None):
+    """Collect every page under SCAN_DIRS.
+
+    `skipped`, if given, accumulates paths that were dropped for unparseable or
+    absent frontmatter. Those pages are invisible to the index, which BRAIN.md §9
+    makes the mandatory Tier-0 read, so a silent drop is the same defect class as a
+    wrong type — it just fails by omission instead of by contradiction. The WARN
+    alone is not enough: it goes to stderr, and under cron nobody reads stderr.
+
+    The walk is recursive. It was depth-1 until 2026-09-11, which made every page in
+    a nested folder invisible with no warning at all.
+    """
     pages = []
     for d in SCAN_DIRS:
         root = os.path.join(vault, d)
         if not os.path.isdir(root):
             continue
-        for fn in sorted(os.listdir(root)):
-            if not fn.endswith(".md"):
-                continue
-            path = os.path.join(root, fn)
+        found = []
+        for sub, dirs, files in os.walk(root):
+            dirs[:] = [x for x in dirs if not x.startswith((".", "_"))]
+            found.extend(os.path.join(sub, f) for f in files if f.endswith(".md"))
+        for path in sorted(found):
+            fn = os.path.basename(path)
             with open(path, encoding="utf-8") as f:
                 text = f.read()
             fm = parse_frontmatter(text, path)
             if not fm or "type" not in fm:
                 print(f"WARN: no/invalid frontmatter: {path}", file=sys.stderr)
+                if skipped is not None:
+                    skipped.append(os.path.relpath(path, vault))
                 continue
             pages.append({
                 "name": fn[:-3],
@@ -185,7 +200,8 @@ def check_types(vault):
     the two failures one exit code would route a reader to the wrong fix.
     """
     bad = []
-    for p in collect(vault):
+    skipped = []
+    for p in collect(vault, skipped=skipped):
         # A superseded page is a redirect: it sits at its OLD path on purpose so
         # inbound links still resolve (§5). Judging it against its folder would
         # flag every retirement the schema itself prescribes.
@@ -194,7 +210,7 @@ def check_types(vault):
         allowed = FOLDER_TYPES.get(p["dir"])
         if allowed is not None and p["type"] not in allowed:
             bad.append((p["path"], p["type"], sorted(allowed)))
-    return bad
+    return bad, skipped
 
 
 def main():
@@ -205,13 +221,19 @@ def main():
                     help="assert every page's type is allowed in its folder; exit 3 on mismatch")
     args = ap.parse_args()
     if args.check_types:
-        bad = check_types(args.vault)
+        bad, skipped = check_types(args.vault)
         for path, got, allowed in bad:
             print(f"type-mismatch: {path} has type {got!r}, folder allows {allowed}")
-        if bad:
-            print(f"{len(bad)} page(s) contradict their folder")
+        for path in skipped:
+            print(f"no-frontmatter: {path} is in a scanned folder and will never "
+                  f"reach the index")
+        if bad or skipped:
+            if bad:
+                print(f"{len(bad)} page(s) contradict their folder")
+            if skipped:
+                print(f"{len(skipped)} page(s) are silently absent from the index")
             sys.exit(3)
-        print("types: no mismatches")
+        print("types: no mismatches, no unindexable pages")
         return
     index_path = os.path.join(args.vault, "_system", "index.md")
     new = build(args.vault)
