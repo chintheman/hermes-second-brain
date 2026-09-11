@@ -50,7 +50,17 @@ def load_registry(vault):
     if not prefixes:
         print(f"ERROR: registry declares no writers: {path}", file=sys.stderr)
         sys.exit(2)
-    return prefixes, data.get("cutover"), data.get("cutover_commit")
+    pin = data.get("cutover_commit")
+    # A pin that is YAML-null, an all-zero OID, or not a hex sha is NOT a pin. Saying
+    # so out loud matters: silently falling back to the date filter is exactly the
+    # forgeable path the pin exists to replace.
+    pin_s = "" if pin is None else str(pin).strip().strip('"').strip("'")
+    if pin_s and (not re.fullmatch(r"[0-9a-fA-F]{7,40}", pin_s)
+                  or set(pin_s) <= {"0"}):
+        print(f"WARN: cutover_commit {pin_s!r} is not a usable sha; "
+              f"falling back to the date filter", file=sys.stderr)
+        pin_s = ""
+    return prefixes, data.get("cutover"), pin_s
 
 
 def git(vault, *args):

@@ -68,12 +68,25 @@ FM_RE = re.compile(r"\A---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 _NULLISH = {"", "null", "~", "none", "nil", "false", "0", "[]", "[ ]", "{}"}
 
 
-def _target_exists(vault, value):
-    """True when `superseded_by` names a page that is actually on disk."""
+def _target_exists(vault, value, self_rel=None):
+    """True when `superseded_by` names a DIFFERENT page that is on disk.
+
+    Self-reference is the escape hatch: a page with the wrong type for its folder
+    could point at itself and be exempt forever. A redirect to yourself is not a
+    redirect.
+    """
     raw = str(value).split("#", 1)[0].strip().strip('"').strip("'")
     name = raw.strip("[]").split("|", 1)[0].strip()
     if not name:
         return False
+    if self_rel:
+        # Same PATH only. A same-basename target in a different directory is the
+        # canonical retirement (entities/x superseded by projects/x), not a
+        # self-reference — comparing basenames gated exactly that case.
+        me = os.path.splitext(self_rel)[0].lower().lstrip("./")
+        them = os.path.splitext(name)[0].lower().lstrip("./")
+        if them == me:
+            return False
     if name.endswith(".md") and os.path.exists(os.path.join(vault, name)):
         return True
     # Case-insensitively, because the vault lives on a case-insensitive filesystem
@@ -178,7 +191,9 @@ def collect(vault, skipped=None):
                 "updated": fm.get("updated", ""),
                 "confidence": fm.get("confidence", ""),
                 "superseded": _is_superseded(fm.get("superseded_by", "")),
-                "supersede_target_exists": _target_exists(vault, fm.get("superseded_by", "")),
+                "supersede_target_exists": _target_exists(
+                    vault, fm.get("superseded_by", ""),
+                    self_rel=os.path.relpath(path, vault)),
                 "sources_n": (lambda s: 0 if not s else s.count(",") + 1)(fm.get("sources", "").strip()),
                 "summary": summary_line(text),
             })
