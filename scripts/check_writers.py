@@ -94,8 +94,23 @@ def main():
     # A SHA pins the range to the DAG. --before is a date filter, and one
     # `git commit --date=<pre-cutover>` at HEAD collapsed the whole range to empty,
     # which the watchdog then read as "nothing to check".
+    # An explicit --since always wins: silently auditing the pinned range while
+    # reporting the user's date was a false PASS over a range nobody asked for.
     # The negative control must look BEFORE the cutover, so it never uses the pin.
-    base = "" if args.negative_control else (registry_base or "").strip()
+    use_pin = not args.negative_control and not args.since
+    base = (registry_base or "").strip() if use_pin else ""
+
+    # Lens 1 #2: `git log A..HEAD` does not error when A is not an ancestor — it
+    # silently becomes a symmetric difference and can reach back past the cutover.
+    if base:
+        anc = subprocess.run(["git", "-C", args.vault, "merge-base",
+                              "--is-ancestor", base, "HEAD"],
+                             capture_output=True, text=True)
+        if anc.returncode != 0:
+            print(f"WARN: cutover_commit {base[:12]} is not an ancestor of HEAD "
+                  f"(rebase or reset?); falling back to the date filter",
+                  file=sys.stderr)
+            base = ""
     if not base:
         base = git(args.vault, "rev-list", "-1", f"--before={since}", "HEAD").strip()
     if base:

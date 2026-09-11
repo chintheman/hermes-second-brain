@@ -76,12 +76,17 @@ def _target_exists(vault, value):
         return False
     if name.endswith(".md") and os.path.exists(os.path.join(vault, name)):
         return True
-    base = os.path.basename(name)
+    # Case-insensitively, because the vault lives on a case-insensitive filesystem
+    # and a link written [[Projects/Agent-Adoption]] names the same real file as
+    # [[projects/agent-adoption]]. Matching case-sensitively gated a page whose
+    # redirect target genuinely exists.
+    base = os.path.basename(name).lower()
     for d in SCAN_DIRS:
         root = os.path.join(vault, d)
         for sub, dirs, files in os.walk(root):
             dirs[:] = [x for x in dirs if not x.startswith((".", "_"))]
-            if f"{base}.md" in files or base in files:
+            lowered = {f.lower() for f in files}
+            if f"{base}.md" in lowered or base in lowered:
                 return True
     return False
 
